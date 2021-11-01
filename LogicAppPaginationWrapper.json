@@ -1,0 +1,120 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "HTTP": {
+                "inputs": {
+                    "body": "@json(variables('GraphRequest'))",
+                    "method": "POST",
+                    "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01"
+                },
+                "runAfter": {
+                    "Initialize_variable_GraphRequest": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            },
+            "Initialize_variable_GraphRequest": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "GraphRequest",
+                            "type": "string",
+                            "value": "{\n\n @{variables('QOption')}\n  \"query\": \"@{parameters('Query')}\"\n}"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_nextLink": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_Option": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "QOption",
+                            "type": "string",
+                            "value": " @{if(empty(variables('nextLink')),'',concat(' \"options\": {\n \"$skipToken\" :\"',variables('nextLink'),'\"   \n  },'))}"
+                        }
+                    ]
+                },
+                "runAfter": {},
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_Responses": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "Res",
+                            "type": "string",
+                            "value": "{\n  \"value\": @{body('HTTP')['data']}\n@{if(empty( body('HTTP')?['$skipToken']),'',concat(',','\"nextLink\":','\"',parameters('LogicAppURL'),'&nextLink=',body('HTTP')?['$skipToken'],'\"'))}\n\n}"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "HTTP": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_nextLink": {
+                "description": "check if there is a nextLink in the request ",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "nextLink",
+                            "type": "string",
+                            "value": "@{triggerOutputs()?['queries']?['nextLink']}"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_Option": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Response": {
+                "inputs": {
+                    "body": "@json(variables('Res'))",
+                    "statusCode": 200
+                },
+                "kind": "Http",
+                "runAfter": {
+                    "Initialize_variable_Responses": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Response"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "LogicAppUrl": {
+                "defaultValue": "http",
+                "type": "String"
+            },
+            "Query": {
+                "defaultValue": "test",
+                "type": "String"
+            }
+        },
+        "triggers": {
+            "manual": {
+                "inputs": {
+                    "method": "GET"
+                },
+                "kind": "Http",
+                "type": "Request"
+            }
+        }
+    },
+    "parameters": {}
+}
