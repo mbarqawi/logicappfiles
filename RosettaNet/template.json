@@ -1,0 +1,382 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflows_RosettaNetinitiator_name": {
+            "defaultValue": "RosettaNetinitiator",
+            "type": "String"
+        },
+        "workflows_RosettaNetResponderp_name": {
+            "defaultValue": "RosettaNetResponderp",
+            "type": "String"
+        },
+        "integrationAccounts_liqtt_externalid": {
+            "defaultValue": "",
+            "type": "String"
+        },
+        "integrationAccounts_RTpartner_externalid": {
+            "defaultValue": "",
+            "type": "String"
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_RosettaNetinitiator_name')]",
+            "location": "brazilsouth",
+            "tags": {
+                "author": "praveen"
+            },
+            "properties": {
+                "state": "Enabled",
+                "integrationAccount": {
+                    "id": "[parameters('integrationAccounts_liqtt_externalid')]"
+                },
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "triggers": {
+                        "manual": {
+                            "type": "Request",
+                            "kind": "Http",
+                            "inputs": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Condition": {
+                            "actions": {
+                                "Condition_2": {
+                                    "actions": {
+                                        "HTTP": {
+                                            "runAfter": {
+                                                "RosettaNet_Encode_2": [
+                                                    "Succeeded"
+                                                ]
+                                            },
+                                            "type": "Http",
+                                            "inputs": {
+                                                "body": "@body('RosettaNet_Encode_2')?['messageContent']",
+                                                "headers": "@body('RosettaNet_Encode_2')?['messageHeaders']",
+                                                "method": "POST",
+                                                "uri": "@body('RosettaNet_Encode_2')?['outboundUri']"
+                                            }
+                                        },
+                                        "RosettaNet_Encode_2": {
+                                            "runAfter": {},
+                                            "type": "RosettaNetEncode",
+                                            "inputs": {
+                                                "guestPartnerName": "@body('RosettaNet_Decode')?['guestPartnerName']",
+                                                "homeRole": "Initiator",
+                                                "hostPartnerName": "@body('RosettaNet_Decode')?['hostPartnerName']",
+                                                "messageToEncode": "@body('RosettaNet_Decode')?['outboundSignal']",
+                                                "messageType": "Signal",
+                                                "processConfigurationCode": "@body('RosettaNet_Decode')?['processConfigurationCode']",
+                                                "processConfigurationInstanceIdentity": "@body('RosettaNet_Decode')?['processConfigurationInstanceIdentity']",
+                                                "processConfigurationVersion": "@body('RosettaNet_Decode')?['processConfigurationVersion']",
+                                                "trackingId": "@body('RosettaNet_Decode')?['trackingId']"
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "RosettaNet_Decode": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "expression": {
+                                        "and": [
+                                            {
+                                                "equals": [
+                                                    "@body('RosettaNet_Decode')?['messageType']",
+                                                    "Response"
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    "type": "If"
+                                },
+                                "RosettaNet_Decode": {
+                                    "runAfter": {},
+                                    "type": "RosettaNetDecode",
+                                    "inputs": {
+                                        "homeRole": "Initiator",
+                                        "messageHeaders": "@triggerOutputs()['headers']",
+                                        "messageToDecode": "@triggerBody()"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Create_PIP_instance_identity": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "else": {
+                                "actions": {
+                                    "Condition_-_Check_if_there_is_Notification_of_Failure": {
+                                        "actions": {
+                                            "Compose": {
+                                                "runAfter": {},
+                                                "type": "Compose",
+                                                "inputs": {
+                                                    "PlaceHolder": "Replace this action with what you want to do with Notification of Failure. This could be your LOB application where you manage RN transactions."
+                                                }
+                                            }
+                                        },
+                                        "runAfter": {
+                                            "Until": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "expression": {
+                                            "and": [
+                                                {
+                                                    "equals": [
+                                                        "@outputs('RosettaNet_wait_for_response')?['body']?['notificationOfFailure']",
+                                                        "@null"
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        "type": "If"
+                                    },
+                                    "Until": {
+                                        "actions": {
+                                            "HTTP_-_Send_encoded_message_to_partner": {
+                                                "runAfter": {
+                                                    "RosettaNet_Encode": [
+                                                        "Succeeded"
+                                                    ]
+                                                },
+                                                "type": "Http",
+                                                "inputs": {
+                                                    "body": "@outputs('RosettaNet_Encode')?['body']?['messageContent']",
+                                                    "headers": "@outputs('RosettaNet_Encode')?['body']?['messageHeaders']",
+                                                    "method": "POST",
+                                                    "uri": "@body('RosettaNet_Encode')?['outboundUri']"
+                                                }
+                                            },
+                                            "RosettaNet_Encode": {
+                                                "runAfter": {},
+                                                "type": "RosettaNetEncode",
+                                                "inputs": {
+                                                    "guestPartnerName": "Gust",
+                                                    "homeRole": "Initiator",
+                                                    "hostPartnerName": "Host",
+                                                    "messageToEncode": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<note>\n<body>Hello World</body>\n</note>",
+                                                    "messageType": "Action",
+                                                    "processConfigurationCode": "3A4",
+                                                    "processConfigurationInstanceIdentity": "@outputs('Create_PIP_instance_identity')",
+                                                    "processConfigurationVersion": "v02.02.00"
+                                                }
+                                            },
+                                            "RosettaNet_wait_for_response": {
+                                                "runAfter": {
+                                                    "HTTP_-_Send_encoded_message_to_partner": [
+                                                        "Succeeded"
+                                                    ]
+                                                },
+                                                "type": "RosettaNetWaitForResponse",
+                                                "inputs": {
+                                                    "homeRole": "Initiator",
+                                                    "pollingInterval": {
+                                                        "count": 1,
+                                                        "unit": "Minute"
+                                                    },
+                                                    "processInstanceIdentity": "@outputs('Create_PIP_instance_identity')",
+                                                    "retryCount": "@iterationIndexes('Until')",
+                                                    "serviceContent": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<note>\n<body>Hello World</body>\n</note>"
+                                                }
+                                            }
+                                        },
+                                        "runAfter": {},
+                                        "expression": "@not(equals(outputs('RosettaNet_wait_for_response')?['body']?['waitForResponseResult'], 'retryable'))",
+                                        "limit": {
+                                            "count": 60,
+                                            "timeout": "PT1H"
+                                        },
+                                        "type": "Until"
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "contains": [
+                                            "@triggerOutputs()['headers']",
+                                            "x-RN-Version"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Create_PIP_instance_identity": {
+                            "runAfter": {},
+                            "type": "Compose",
+                            "inputs": "@guid()"
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {}
+            }
+        },
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_RosettaNetResponderp_name')]",
+            "location": "brazilsouth",
+            "tags": {
+                "author": "praveen"
+            },
+            "properties": {
+                "state": "Enabled",
+                "integrationAccount": {
+                    "id": "[parameters('integrationAccounts_RTpartner_externalid')]"
+                },
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "triggers": {
+                        "manual": {
+                            "type": "Request",
+                            "kind": "Http",
+                            "inputs": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Encode_and_Send_Signal": {
+                            "actions": {
+                                "Condition": {
+                                    "actions": {
+                                        "HTTP": {
+                                            "runAfter": {
+                                                "RosettaNet_Encode": [
+                                                    "Succeeded"
+                                                ]
+                                            },
+                                            "type": "Http",
+                                            "inputs": {
+                                                "body": "@body('RosettaNet_Encode')?['messageContent']",
+                                                "headers": "@body('RosettaNet_Encode')?['messageHeaders']",
+                                                "method": "POST",
+                                                "uri": "@body('RosettaNet_Encode')?['outboundUri']"
+                                            }
+                                        },
+                                        "RosettaNet_Encode": {
+                                            "runAfter": {},
+                                            "type": "RosettaNetEncode",
+                                            "inputs": {
+                                                "guestPartnerName": "@body('RosettaNet_Decode')?['guestPartnerName']",
+                                                "homeRole": "Responder",
+                                                "hostPartnerName": "@body('RosettaNet_Decode')?['hostPartnerName']",
+                                                "messageToEncode": "doubleaction",
+                                                "messageType": "Response",
+                                                "processConfigurationCode": "@body('RosettaNet_Decode')?['processConfigurationCode']",
+                                                "processConfigurationInstanceIdentity": "@body('RosettaNet_Decode')?['processConfigurationInstanceIdentity']",
+                                                "processConfigurationVersion": "@body('RosettaNet_Decode')?['processConfigurationVersion']"
+                                            }
+                                        },
+                                        "RosettaNet_wait_for_response": {
+                                            "runAfter": {
+                                                "HTTP": [
+                                                    "Succeeded"
+                                                ]
+                                            },
+                                            "type": "RosettaNetWaitForResponse",
+                                            "inputs": {
+                                                "homeRole": "Responder",
+                                                "processInstanceIdentity": "@body('RosettaNet_Decode')?['processConfigurationInstanceIdentity']",
+                                                "retryCount": 4,
+                                                "serviceContent": "@body('RosettaNet_Encode')?['messageContent']"
+                                            }
+                                        }
+                                    },
+                                    "runAfter": {
+                                        "HTTP_Send_signal_to_Partner": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "expression": {
+                                        "and": [
+                                            {
+                                                "equals": [
+                                                    "@body('RosettaNet_Decode')?['actionType']",
+                                                    "DoubleAction"
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    "type": "If"
+                                },
+                                "HTTP_Send_signal_to_Partner": {
+                                    "runAfter": {
+                                        "RosettaNet_Encode_Signal": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "Http",
+                                    "inputs": {
+                                        "body": "@outputs('RosettaNet_Encode_Signal')?['body']?['messageContent']",
+                                        "headers": "@outputs('RosettaNet_Encode_Signal')?['body']?['messageHeaders']",
+                                        "method": "POST",
+                                        "uri": "@outputs('RosettaNet_Encode_Signal')?['body']?['outboundUri']"
+                                    }
+                                },
+                                "RosettaNet_Encode_Signal": {
+                                    "runAfter": {},
+                                    "type": "RosettaNetEncode",
+                                    "inputs": {
+                                        "guestPartnerName": "@body('RosettaNet_Decode')?['guestPartnerName']",
+                                        "homeRole": "Responder",
+                                        "hostPartnerName": "@body('RosettaNet_Decode')?['hostPartnerName']",
+                                        "messageToEncode": "@outputs('RosettaNet_Decode')?['body']?['outboundSignal']",
+                                        "messageType": "Signal",
+                                        "processConfigurationCode": "@outputs('RosettaNet_Decode')?['body']?['processConfigurationCode']",
+                                        "processConfigurationInstanceIdentity": "@outputs('RosettaNet_Decode')?['body']?['processConfigurationInstanceIdentity']",
+                                        "processConfigurationVersion": "@outputs('RosettaNet_Decode')?['body']?['processConfigurationVersion']",
+                                        "trackingId": "@outputs('RosettaNet_Decode')?['body']?['trackingId']"
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "RosettaNet_Decode": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "equals": [
+                                            "@outputs('RosettaNet_Decode')?['body']?['messageType']",
+                                            "Action"
+                                        ]
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "RosettaNet_Decode": {
+                            "runAfter": {},
+                            "type": "RosettaNetDecode",
+                            "inputs": {
+                                "homeRole": "Responder",
+                                "messageHeaders": "@triggerOutputs()['headers']",
+                                "messageToDecode": "@triggerBody()"
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {}
+            }
+        }
+    ]
+}
