@@ -2,8 +2,8 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "workflows_ahmedvmcase_name": {
-            "defaultValue": "ahmedvmcase",
+        "workflows_internal_paging_name": {
+            "defaultValue": "internalPagingFlow",
             "type": "String"
         }
     },
@@ -12,9 +12,9 @@
         {
             "type": "Microsoft.Logic/workflows",
             "apiVersion": "2017-07-01",
-            "name": "[parameters('workflows_ahmedvmcase_name')]",
-            "location": "northeurope",
-            "kind": "AutomationTask",
+            "name": "[parameters('workflows_internal_paging_name')]",
+            "location": "[resourceGroup().location]",
+ 
             "properties": {
                 "state": "Enabled",
                 "definition": {
@@ -41,25 +41,19 @@
                     },
                     "actions": {
                         "HTTP": {
+                            "inputs": {
+                                "body": "@json(variables('GraphRequest'))",
+                                "method": "POST",
+                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01"
+                            },
                             "runAfter": {
                                 "Initialize_variable_GraphRequest": [
                                     "Succeeded"
                                 ]
                             },
-                            "type": "Http",
-                            "inputs": {
-                                "body": "@json(variables('GraphRequest'))",
-                                "method": "POST",
-                                "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2021-03-01"
-                            }
+                            "type": "Http"
                         },
                         "Initialize_variable_GraphRequest": {
-                            "runAfter": {
-                                "Initialize_variable_nextLink": [
-                                    "Succeeded"
-                                ]
-                            },
-                            "type": "InitializeVariable",
                             "inputs": {
                                 "variables": [
                                     {
@@ -68,11 +62,15 @@
                                         "value": "{\n\n @{variables('QOption')}\n  \"query\": \"@{parameters('Query')}\"\n}"
                                     }
                                 ]
-                            }
+                            },
+                            "runAfter": {
+                                "Initialize_variable_Option": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "InitializeVariable"
                         },
                         "Initialize_variable_Option": {
-                            "runAfter": {},
-                            "type": "InitializeVariable",
                             "inputs": {
                                 "variables": [
                                     {
@@ -81,15 +79,15 @@
                                         "value": " @{if(empty(variables('nextLink')),'',concat(' \"options\": {\n \"$skipToken\" :\"',variables('nextLink'),'\"   \n  },'))}"
                                     }
                                 ]
-                            }
-                        },
-                        "Initialize_variable_Responses": {
+                            },
                             "runAfter": {
-                                "HTTP": [
+                                "Initialize_variable_nextLink": [
                                     "Succeeded"
                                 ]
                             },
-                            "type": "InitializeVariable",
+                            "type": "InitializeVariable"
+                        },
+                        "Initialize_variable_Responses": {
                             "inputs": {
                                 "variables": [
                                     {
@@ -98,15 +96,16 @@
                                         "value": "{\n  \"value\": @{body('HTTP')['data']}\n@{if(empty( body('HTTP')?['$skipToken']),'',concat(',','\"nextLink\":','\"',parameters('LogicAppURL'),'&nextLink=',body('HTTP')?['$skipToken'],'\"'))}\n\n}"
                                     }
                                 ]
-                            }
-                        },
-                        "Initialize_variable_nextLink": {
+                            },
                             "runAfter": {
-                                "Initialize_variable_Option": [
+                                "HTTP": [
                                     "Succeeded"
                                 ]
                             },
-                            "type": "InitializeVariable",
+                            "type": "InitializeVariable"
+                        },
+                        "Initialize_variable_nextLink": {
+                            "description": "check if there is a nextLink in the request ",
                             "inputs": {
                                 "variables": [
                                     {
@@ -116,20 +115,21 @@
                                     }
                                 ]
                             },
-                            "description": "check if there is a nextLink in the request "
+                            "runAfter": {},
+                            "type": "InitializeVariable"
                         },
                         "Response": {
+                            "inputs": {
+                                "body": "@json(variables('Res'))",
+                                "statusCode": 200
+                            },
+                            "kind": "Http",
                             "runAfter": {
                                 "Initialize_variable_Responses": [
                                     "Succeeded"
                                 ]
                             },
-                            "type": "Response",
-                            "kind": "Http",
-                            "inputs": {
-                                "body": "@json(variables('Res'))",
-                                "statusCode": 200
-                            }
+                            "type": "Response"
                         }
                     },
                     "outputs": {}
