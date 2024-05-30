@@ -92,7 +92,7 @@ function listShare {
 }
 
 # Define the list of endpoints
-$WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('WEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
+$WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
 $StorageAccountName = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountName=([^;]+).*", '$1'
 $StorageAccountKey = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountKey=([^;]+).*", '$1'
 $EndpointSufix = '.core.windows.net'
