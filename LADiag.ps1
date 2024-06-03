@@ -109,7 +109,7 @@ $nslookupResults = @()
 
 # Loop through each endpoint and gather results
 foreach ($endpoint in $endpoints) {
-    $testConnectionResults += Test-ConnectionResult -Endpoint $endpoint
+    $testConnectionResults += Test-ConnectionResult -Endpoint $endpoint:443
     $nslookupResults += NameresolverResult -Endpoint $endpoint
 }
 
