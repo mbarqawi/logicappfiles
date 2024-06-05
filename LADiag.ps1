@@ -1,33 +1,14 @@
-
-
-
 # Function to perform Test-Connection
-
-
 function Test-ConnectionResult {
     param (
         [string]$Endpoint
     )
-    
-
-    $result = cmd /c tcpping  $Endpoint 2`>`&1
-    if ($result) {
-        return @{
-            Endpoint     = $Endpoint
-            Status       = "Success"
-            ResponseTime = $result
-        }
-    }
-    else {
-        return [PSCustomObject]@{
-            Endpoint     = $Endpoint
-            Status       = "Failed"
-            ResponseTime = "N/A"
-        }
-    }
+    $result = "<span class='alert2 warning-alert'>tcpping $Endpoint</span><hr>"
+    cmd /c tcpping  $Endpoint | Tee-Object -Variable $result
+    return $result
 }
 
-# Function to perform nslookup
+
 function NameresolverResult {
     param (
         [string]$Endpoint
@@ -91,8 +72,9 @@ function listShare {
     Return $Response
 }
 
-# Define the list of endpoints
+
 $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
+$WEBSITE_CONTENTSHARE = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTSHARE')
 $StorageAccountName = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountName=([^;]+).*", '$1'
 $StorageAccountKey = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountKey=([^;]+).*", '$1'
 $EndpointSufix = '.core.windows.net'
@@ -104,14 +86,17 @@ $endpoints = @( "$StorageAccountName.blob$EndpointSufix" , "$StorageAccountName.
 # Initialize arrays to store the results
 $testConnectionResults = @()
 $nslookupResults = @()
-
-"Report is generating now, please wait. You can see the report by downloading the file ConnectionAndDnsResults.html"
+# Get the current date and time
+$reportDate = Get-Date
+"Report is generating now $reportDate , Please wait!"
+"You can see the report by downloading the file ConnectionAndDnsResults.html"
 
 # Loop through each endpoint and gather results
 foreach ($endpoint in $endpoints) {
-    $testConnectionResults += Test-ConnectionResult -Endpoint $endpoint:443
+    $testConnectionResults += ( Test-ConnectionResult -Endpoint $endpoint":443")
     $nslookupResults += NameresolverResult -Endpoint $endpoint
 }
+$joinedStringTestConnectionResults = $testConnectionResults -join "`n<br>"
 
 $filePort445Result = cmd /c tcpping  "$StorageAccountName.file.core.windows.net:445" 2`>`&1
 $ListResult = listShare -StorageAccountName $StorageAccountName -StorageAccountKey $StorageAccountKey
@@ -124,8 +109,7 @@ foreach ($match in $namemMatches) {
     $shareNames += "<li>$match</li>"
 }
 $ListResult = $ListResult -replace "><", ">`n<"
-# Get the current date and time
-$reportDate = Get-Date
+
 
 # Convert the results to HTML tables
 $html = @"
@@ -193,15 +177,23 @@ $html = @"
             resize: both;
         }
         .alert{
-            width: 50%;
-            /* margin: 20px auto; */
-            padding: 30px;
-            position: relative;
-            border-radius: 5px;
-            box-shadow: 0 0 15px 5px #ccc;
-            background-color: darkgoldenrod;
-          }
-         
+
+                width: 50%;
+                padding: 30px;
+                position: relative;
+                border-radius: 5px;
+                box-shadow: 0 0 2px 0px #ccc;
+                background-color: #6a6a6a;
+            }
+          .alert2{
+                width: 50%;
+                position: relative;
+                border-radius: 5px;
+                box-shadow: 0 0 2px 0px #ccc;
+                background-color: #071c6d;
+                color: #d0ff00;
+                font-size: x-large;
+      }
     </style>
 </head>
 <body>
@@ -210,21 +202,12 @@ $html = @"
     <h2>TCPPing Results</h2>
     <table>
         <tr>
-            <th>Endpoint</th>
-            <th>Status</th>
-            <th>Response Time (ms)</th>
+            <th>Response</th>
         </tr>
-"@
-
-foreach ($result in $testConnectionResults) {
-    $html += @"
         <tr>
-            <td>$($result.Endpoint)</td>
-            <td>$($result.Status)</td>
-            <td>$($result.ResponseTime)</td>
+            <td><pre>$joinedStringTestConnectionResults</pre></td>
         </tr>
 "@
-}
 
 $html += @"
     </table>
@@ -247,8 +230,8 @@ foreach ($result in $nslookupResults) {
 
 $html += @"
     </table>
-    <H2>Available File Shares using port 443</h2>
-    <p class='alert warning-alert'>You should see the share Name that match the <code>WEBSITE_CONTENTSHARE</code> </p>
+    <H2>Available File Shares using Rest API over port 443</h2>
+    <p class='alert warning-alert'>You should see the share Name that match the <code> WEBSITE_CONTENTSHARE = <span class='alert2'>$WEBSITE_CONTENTSHARE </span></code></p>
     <ul>
     $shareNames
     </ul>
@@ -264,5 +247,4 @@ $html += @"
 # Output the HTML to a file
 $outputFile = "ConnectionAndDnsResults.html"
 $html | Out-File -FilePath $outputFile
-
 
