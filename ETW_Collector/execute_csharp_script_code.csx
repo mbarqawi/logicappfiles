@@ -48,7 +48,7 @@ public static string FormatDataTableRow(DataTable dt)
 {
     StringBuilder result = new StringBuilder();
     
-    // Iterate through each row in the DataTable
+    // Iterate through each row in the DataTable bb
     for (int rowIndex = 0; rowIndex < dt.Rows.Count; rowIndex++)
     {
         DataRow row = dt.Rows[rowIndex];
@@ -97,7 +97,7 @@ internal sealed class TextEventListener : EventListener
     private readonly object _lockObject = new object();
     private const string LOG_FILE_PATH = "C:\\home\\LogFiles\\event_keys.log";
 
-    public HttpEventListener(DataTable peventTable)
+    public TextEventListener(DataTable peventTable)
     {
         eventTable = peventTable;
     }
@@ -157,7 +157,7 @@ internal sealed class TextEventListener : EventListener
 
             // Add the event data to the DataRow
             row["TimeStamp"] = eventData.TimeStamp.ToUniversalTime().ToString();
-            row["EventName"] = keyTocheck;
+            row["EventName"] = keyToCheck;
             row["OSThreadId"] = eventData.OSThreadId;
             row["ActivityId"] = eventData.ActivityId;
             row["Message"] = eventData.Message;
