@@ -4,10 +4,46 @@ function Test-ConnectionResult {
         [string]$Endpoint
     )
     $result = "<span class='alert2 warning-alert'>tcpping $Endpoint</span><hr>"
-    cmd /c tcpping  $Endpoint | Tee-Object -Variable $result
+   # cmd /c openssl s_client -connect $Endpoint | Tee-Object -Variable $result
     return $result
 }
 
+function Get-CertificateSubject {
+    param (
+        [string]$Endpoint
+    )
+    
+    try {
+        # Remove protocol if it exists
+        $Endpoint = $Endpoint -replace "^https?://", ""
+        # Remove path and keep only host
+        $Endpoint = ($Endpoint -split "/")[0]
+         # Remove port number if any
+        $Endpoint = ($Endpoint -split ":")[0]
+         $Endpoint
+        # Create connection to get the certificate
+        $tcpClient = New-Object System.Net.Sockets.TcpClient($Endpoint, 443)
+        $tcpStream = $tcpClient.GetStream()
+        
+        # Create SSL stream
+        $sslStream = New-Object System.Net.Security.SslStream($tcpStream, $false)
+        $sslStream.AuthenticateAsClient($Endpoint)
+        
+        # Get certificate details
+        $cert = $sslStream.RemoteCertificate
+        $subject = $cert.Subject
+        
+        # Clean up resources
+        $sslStream.Close()
+        $tcpStream.Close()
+        $tcpClient.Close()
+        
+        return $subject
+    }
+    catch {
+        return "Error getting certificate: $($_.Exception.Message)"
+    }
+}
 
 function NameresolverResult {
     param (
@@ -16,9 +52,7 @@ function NameresolverResult {
 
     try {
         $nslookup = Nameresolver $Endpoint 2>$null
-       
         $output = $nslookup -replace "  ", "<br>" -replace "`t", "<br>&nbsp;&nbsp;&nbsp;&nbsp;"
-        
     }
     catch {
         $output = "Failed"
@@ -29,15 +63,17 @@ function NameresolverResult {
         Output   = $output
     }
 }
+
 function listShare {
-    param ( [Parameter(Mandatory = $true, Position = 0)]
+    param (
+        [Parameter(Mandatory = $true, Position = 0)]
         [string]$StorageAccountName,
         [Parameter(Mandatory = $true, Position = 1)]
         [string]$StorageAccountKey
     )
     
     $Date = (Get-Date).ToUniversalTime()
-    $Datestr = $Date.ToString("R");
+    $Datestr = $Date.ToString("R")
     $Url = "https://$StorageAccountName.file.core.windows.net/?comp=list"
     $Version = "2017-04-17"
 
@@ -53,7 +89,6 @@ function listShare {
     $AuthHdr = "SharedKey ${StorageAccountName}:$Sig"
   
     $RequestHeader = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
- 
     $RequestHeader.Add("Authorization", $AuthHdr)
     $RequestHeader.Add("x-ms-date", $Datestr)
     $RequestHeader.Add("x-ms-version", $Version)
@@ -66,22 +101,32 @@ function listShare {
         $reader = New-Object System.IO.StreamReader($resultStream)
         $reader.BaseStream.Position = 0
         $reader.DiscardBufferedData()
-        $Response = $reader.ReadToEnd();
+        $Response = $reader.ReadToEnd()
     }
 
-    Return $Response
+    return $Response
 }
-
 
 $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
 $WEBSITE_CONTENTSHARE = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTSHARE')
+
+if (-not $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING) {
+    $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('WEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
+}
+
+if (-not $WEBSITE_CONTENTSHARE) {
+    $WEBSITE_CONTENTSHARE = [Environment]::GetEnvironmentVariable('WEBSITE_CONTENTSHARE')
+}
 $StorageAccountName = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountName=([^;]+).*", '$1'
 $StorageAccountKey = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*AccountKey=([^;]+).*", '$1'
-$EndpointSufix = '.core.windows.net'
+$EndpointSuffix = '.core.windows.net'
 
-
-
-$endpoints = @( "$StorageAccountName.blob$EndpointSufix" , "$StorageAccountName.table$EndpointSufix", "$StorageAccountName.file$EndpointSufix", "$StorageAccountName.queue$EndpointSufix" )
+$endpoints = @(
+    @{ Address = "$StorageAccountName.blob$EndpointSuffix"; Type = "Blob" },
+    @{ Address = "$StorageAccountName.table$EndpointSuffix"; Type = "Table" },
+    @{ Address = "$StorageAccountName.file$EndpointSuffix"; Type = "File" },
+    @{ Address = "$StorageAccountName.queue$EndpointSuffix"; Type = "Queue" }
+)
 
 # Initialize arrays to store the results
 $testConnectionResults = @()
@@ -93,23 +138,21 @@ $reportDate = Get-Date
 
 # Loop through each endpoint and gather results
 foreach ($endpoint in $endpoints) {
-    $testConnectionResults += ( Test-ConnectionResult -Endpoint $endpoint":443")
-    $nslookupResults += NameresolverResult -Endpoint $endpoint
+    $testConnectionResults += (Get-CertificateSubject -Endpoint "$($endpoint.Address):443")
+    $nslookupResults += NameresolverResult -Endpoint $endpoint.Address
 }
 $joinedStringTestConnectionResults = $testConnectionResults -join "`n<br>"
 
-$filePort445Result = cmd /c tcpping  "$StorageAccountName.file.core.windows.net:445" 2`>`&1
+$filePort445Result = cmd /c tcpping "$StorageAccountName.file.core.windows.net:445" 2`>`&1
 $ListResult = listShare -StorageAccountName $StorageAccountName -StorageAccountKey $StorageAccountKey
 
 $pattern = '<Name>(.*?)<\/Name>'
- 
 $namemMatches = [regex]::Matches($ListResult, $pattern)
 $shareNames = ""
 foreach ($match in $namemMatches) {
     $shareNames += "<li>$match</li>"
 }
 $ListResult = $ListResult -replace "><", ">`n<"
-
 
 # Convert the results to HTML tables
 $html = @"
@@ -160,86 +203,72 @@ $html = @"
             padding: .2em;
             width: auto;
             min-width: 30em;
-            /* The max-width "100%" value fixes a weird issue where width is too wide by default and extends beyond 100% of the parent in some agents. */
             max-width: 100%;
-            /* Height "auto" will allow the text area to expand vertically in size with a horizontal scrollbar if pre-existing content is added to the box before rendering. Remove this if you want a pre-set height. Use "em" to match the font size set in the website. */
             height: auto;
-            /* Use "em" to define the height based on the text size set in your website and the text rows in the box, not a static pixel value. */
             min-height: 10em;
-            /* Do not use "border" in textareas unless you want to remove the 3D box most browsers assign and flatten the box design. */
-            /*border: 1px solid black;*/
-            cursor: text;
-            /* Some textareas have a light gray background by default anyway. */
             background-color: #eee;
-            /* Overflow "auto" allows the box to start with no scrollbars but add them as content fills the box. */
             overflow: auto;
-            /* Resize creates a tab in the lower right corner of textarea for most modern browsers and allows users to resize the box manually. Note: Resize isn't supported by most older agents and IE. */
             resize: both;
         }
-        .alert{
-
-                width: 50%;
-                padding: 30px;
-                position: relative;
-                border-radius: 5px;
-                box-shadow: 0 0 2px 0px #ccc;
-                background-color: #6a6a6a;
-            }
-          .alert2{
-                width: 50%;
-                position: relative;
-                border-radius: 5px;
-                box-shadow: 0 0 2px 0px #ccc;
-                background-color: #071c6d;
-                color: #d0ff00;
-                font-size: x-large;
-      }
+        .alert {
+            width: 50%;
+            padding: 30px;
+            position: relative;
+            border-radius: 5px;
+            box-shadow: 0 0 2px 0px #ccc;
+            background-color: #6a6a6a;
+        }
+        .alert2 {
+            width: 50%;
+            position: relative;
+            border-radius: 5px;
+            box-shadow: 0 0 2px 0px #ccc;
+            background-color: #071c6d;
+            color: #d0ff00;
+            font-size: x-large;
+        }
     </style>
 </head>
 <body>
 <h1>Storage Connection Test & DNS Results</h1>
 <p><strong>Report Date:</strong><span style='font-family: Arial, sans-serif;color: burlywood;font-size: larger;'> $reportDate</span></p>
-    <h2>TCPPing Results</h2>
-    <table>
-        <tr>
-            <th>Response</th>
-        </tr>
-        <tr>
-            <td><pre>$joinedStringTestConnectionResults</pre></td>
-        </tr>
-"@
-
-$html += @"
-    </table>
-    <h2>NameResolver Results</h2>
-    <table>
-        <tr>
-            <th>Endpoint</th>
-            <th>Output</th>
-        </tr>
+<h2>TCPPing Results</h2>
+<table>
+    <tr>
+        <th>Response</th>
+    </tr>
+    <tr>
+        <td><pre>$joinedStringTestConnectionResults</pre></td>
+    </tr>
+</table>
+<h2>NameResolver Results</h2>
+<table>
+    <tr>
+        <th>Endpoint</th>
+        <th>Output</th>
+    </tr>
 "@
 
 foreach ($result in $nslookupResults) {
     $html += @"
-        <tr>
-            <td>$($result.Endpoint)</td>
-            <td><pre>$($result.Output)</pre></td>
-        </tr>
+    <tr>
+        <td>$($result.Endpoint)</td>
+        <td><pre>$($result.Output)</pre></td>
+    </tr>
 "@
 }
 
 $html += @"
-    </table>
-    <H2>Available File Shares using Rest API over port 443</h2>
-    <p class='alert warning-alert'>You should see the share Name that match the <code> WEBSITE_CONTENTSHARE = <span class='alert2'>$WEBSITE_CONTENTSHARE </span></code></p>
-    <ul>
-    $shareNames
-    </ul>
-    <textarea>$ListResult</textarea>
-   
-    <h2>Testing port 445 for <code>$StorageAccountName.file.core.windows.net</code> </h2>
-    <p class='alert warning-alert'>"An attempt was made to access a socket in a way forbidden by its access permissions" mean that the connection is open  </p>
-     <pre>$filePort445Result</pre>
+</table>
+<h2>Available File Shares using Rest API over port 443</h2>
+<p class='alert warning-alert'>You should see the share Name that match the <code>WEBSITE_CONTENTSHARE = <span class='alert2'>$WEBSITE_CONTENTSHARE</span></code></p>
+<ul>
+$shareNames
+</ul>
+<textarea>$ListResult</textarea>
+<h2>Testing port 445 for <code>$StorageAccountName.file.core.windows.net</code></h2>
+<p class='alert warning-alert'>"An attempt was made to access a socket in a way forbidden by its access permissions" mean that the connection is open</p>
+<pre>$filePort445Result</pre>
 </body>
 </html>
 "@
