@@ -63,7 +63,6 @@ function NameresolverResult {
         Output   = $output
     }
 }
-
 function listShare {
     param (
         [Parameter(Mandatory = $true, Position = 0)]
@@ -107,6 +106,44 @@ function listShare {
     return $Response
 }
 
+function Get-EndpointsHtmlTable {
+    param (
+        [Parameter(Mandatory = $true)]
+        [Array]$Endpoints
+    )
+
+    $htmlTable = @"
+<h2>Endpoint Certificate Verification</h2>
+<table>
+    <tr>
+        <th>Endpoint Type</th>
+      
+        <th>Certificate and DNS </th>
+        <th>Certificate Match</th>
+    </tr>
+"@
+
+    foreach ($endpoint in $Endpoints) {
+        $verified = if ($endpoint.Certificate -match $endpoint.Type) {
+            "Y"
+        } else {
+            "N"
+        }
+        
+        $htmlTable += @"
+    <tr>
+        <td>$($endpoint.Type)</td>
+      
+        <td><pre>$($endpoint.Certificate)</pre><pre>$($endpoint.DNS.Output)</pre></td>
+        <td>$verified</td>
+    </tr>
+"@
+    }
+
+    $htmlTable += "</table>"
+    return $htmlTable
+}
+
 $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTAZUREFILECONNECTIONSTRING')
 $WEBSITE_CONTENTSHARE = [Environment]::GetEnvironmentVariable('XWEBSITE_CONTENTSHARE')
 
@@ -122,35 +159,32 @@ $StorageAccountKey = $WEBSITE_CONTENTAZUREFILECONNECTIONSTRING -replace ".*Accou
 $EndpointSuffix = '.core.windows.net'
 
 $endpoints = @(
-    @{ Address = "$StorageAccountName.blob$EndpointSuffix"; Type = "Blob" },
-    @{ Address = "$StorageAccountName.table$EndpointSuffix"; Type = "Table" },
-    @{ Address = "$StorageAccountName.file$EndpointSuffix"; Type = "File" },
-    @{ Address = "$StorageAccountName.queue$EndpointSuffix"; Type = "Queue" }
+    @{ Address = "$StorageAccountName.blob$EndpointSuffix"; Type = "Blob"; Certificate = ""; DNS = "" },
+    @{ Address = "$StorageAccountName.table$EndpointSuffix"; Type = "Table"; Certificate = ""; DNS = "" },
+    @{ Address = "$StorageAccountName.file$EndpointSuffix"; Type = "File"; Certificate = ""; DNS = "" },
+    @{ Address = "$StorageAccountName.queue$EndpointSuffix"; Type = "Queue"; Certificate = ""; DNS = "" }
 )
 
 # Initialize arrays to store the results
-$testConnectionResults = @()
-$nslookupResults = @()
-# Get the current date and time
+# Remove unused variables
 $reportDate = Get-Date
 "Report is generating now $reportDate , Please wait!"
 "You can see the report by downloading the file ConnectionAndDnsResults.html"
 
 # Loop through each endpoint and gather results
 foreach ($endpoint in $endpoints) {
-    $testConnectionResults += (Get-CertificateSubject -Endpoint "$($endpoint.Address):443")
-    $nslookupResults += NameresolverResult -Endpoint $endpoint.Address
+    $endpoint.Certificate = (Get-CertificateSubject -Endpoint "$($endpoint.Address):443")
+    $endpoint.DNS = NameresolverResult -Endpoint $endpoint.Address
 }
-$joinedStringTestConnectionResults = $testConnectionResults -join "`n<br>"
 
 $filePort445Result = cmd /c tcpping "$StorageAccountName.file.core.windows.net:445" 2`>`&1
 $ListResult = listShare -StorageAccountName $StorageAccountName -StorageAccountKey $StorageAccountKey
 
-$pattern = '<Name>(.*?)<\/Name>'
+$pattern = "<Name>$WEBSITE_CONTENTSHARE<\/Name>"
 $namemMatches = [regex]::Matches($ListResult, $pattern)
 $shareNames = ""
 foreach ($match in $namemMatches) {
-    $shareNames += "<li>$match</li>"
+    $shareNames += "Found the Share on the Storage account  $match"
 }
 $ListResult = $ListResult -replace "><", ">`n<"
 
@@ -210,7 +244,7 @@ $html = @"
             overflow: auto;
             resize: both;
         }
-        .alert {
+               .alert {
             width: 50%;
             padding: 30px;
             position: relative;
@@ -232,43 +266,38 @@ $html = @"
 <body>
 <h1>Storage Connection Test & DNS Results</h1>
 <p><strong>Report Date:</strong><span style='font-family: Arial, sans-serif;color: burlywood;font-size: larger;'> $reportDate</span></p>
-<h2>TCPPing Results</h2>
-<table>
-    <tr>
-        <th>Response</th>
-    </tr>
-    <tr>
-        <td><pre>$joinedStringTestConnectionResults</pre></td>
-    </tr>
-</table>
-<h2>NameResolver Results</h2>
-<table>
-    <tr>
-        <th>Endpoint</th>
-        <th>Output</th>
-    </tr>
+$(Get-EndpointsHtmlTable -Endpoints $endpoints)
 "@
 
-foreach ($result in $nslookupResults) {
-    $html += @"
-    <tr>
-        <td>$($result.Endpoint)</td>
-        <td><pre>$($result.Output)</pre></td>
-    </tr>
-"@
-}
 
 $html += @"
 </table>
 <h2>Available File Shares using Rest API over port 443</h2>
 <p class='alert warning-alert'>You should see the share Name that match the <code>WEBSITE_CONTENTSHARE = <span class='alert2'>$WEBSITE_CONTENTSHARE</span></code></p>
-<ul>
-$shareNames
-</ul>
+
+$(if ([string]::IsNullOrEmpty($shareNames)) {
+    "<p class='alert2 warning-alert'>WARNING: No file shares found in the storage account! The share '$WEBSITE_CONTENTSHARE' does not exist.</p>"
+} else {
+    "<p class='alert2' >$shareNames</p>"
+})
+<p>Full shares list </p>
 <textarea>$ListResult</textarea>
+<br>
+<br>
+<br>
+
 <h2>Testing port 445 for <code>$StorageAccountName.file.core.windows.net</code></h2>
-<p class='alert warning-alert'>"An attempt was made to access a socket in a way forbidden by its access permissions" mean that the connection is open</p>
-<pre>$filePort445Result</pre>
+<h3>The command result </h3>
+<hr>
+<pre class='alert warning-alert'>$filePort445Result</pre>
+<p class='alert warning-alert'> 
+if you see the text  <span style="text-decoration: underline;">
+<strong>"An attempt was made to access a socket in a way forbidden by its access permissions"</strong></span> means that the connection is not blocked 
+</p>
+
+
+
+
 </body>
 </html>
 "@
