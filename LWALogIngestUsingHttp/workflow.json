@@ -1,0 +1,99 @@
+{
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "actions": {
+        "Response": {
+          "type": "Response",
+          "kind": "Http",
+          "inputs": {
+            "statusCode": 200,
+            "body": "@actions('HTTP')"
+          },
+          "runAfter": {
+            "HTTP": [
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          }
+        },
+        "GenerateSignature": {
+          "type": "CSharpScriptCode",
+          "inputs": {
+            "CodeFile": "CSharpScriptCode.csx"
+          },
+          "runAfter": {
+            "payload_to_send": [
+              "SUCCEEDED"
+            ],
+            "LAW_connection": [
+              "SUCCEEDED"
+            ]
+          }
+        },
+        "payload_to_send": {
+          "type": "Compose",
+          "inputs": [
+            {
+              "WorkspaceId": "6ad67811-6ab8-42ac-bb80-b147ff785df6",
+              "SharedKey": "j==hkjhjhkj"
+            }
+          ],
+          "runAfter": {}
+        },
+        "LAW_connection": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": {
+              "WorkspaceId": "6ad67811-6ab8-42ac-bb80-b147ff785df6",
+              "SharedKey": "zI9PR0gDT51yHwRMXibpZUfiaqV9JPrfgTvVcQDpBNI7bImEy4sbgDIstrzsJ9KmMl4qPrhYbGJRMIPp0XEO6Q=="
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "WorkspaceId": {
+                  "type": "string"
+                },
+                "SharedKey": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "runAfter": {}
+        },
+        "HTTP": {
+          "type": "Http",
+          "inputs": {
+            "uri": "https://@{body('LAW_connection')?['WorkspaceId']}.ods.opinsights.azure.com/api/logs?api-version=2016-04-01",
+            "method": "POST",
+            "headers": {
+              "Authorization": "@{outputs('GenerateSignature')['body']['signature']}",
+              "Log-Type": "CustomLogTable",
+              "x-ms-date": "@{outputs('GenerateSignature')['body']['dateString']}",
+              "Content-Type": "application/json"
+            },
+            "body": "@outputs('payload_to_send')"
+          },
+          "runAfter": {
+            "GenerateSignature": [
+              "SUCCEEDED"
+            ]
+          },
+          "runtimeConfiguration": {
+            "contentTransfer": {
+              "transferMode": "Chunked"
+            }
+          }
+        }
+      },
+      "contentVersion": "1.0.0.0",
+      "outputs": {},
+      "triggers": {
+        "When_a_HTTP_request_is_received": {
+          "type": "Request",
+          "kind": "Http"
+        }
+      }
+    },
+    "kind": "Stateful"
+  }
